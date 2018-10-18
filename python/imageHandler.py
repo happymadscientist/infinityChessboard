@@ -24,7 +24,7 @@ class chessboardImageHandler:
 		self.pictureSizes = self.maskModes.keys()
 		
 		self.activeUrl = ""
-		self.resizeSize = (8,8)
+		self.resizeSize = (48,48)
 		self.maskMode = self.maskModes[self.resizeSize]
 		self.setupPictureWindows()
 		self.setupControls()
@@ -155,8 +155,8 @@ class chessboardImageHandler:
 		maskXs = []
 		maskYs = []
 
-		for x in range(8):
-			for y in range(8):
+		for y in range(8):
+			for x in range(8):
 				maskYs = np.append(maskYs,ys + (masterSquareSpace * y))
 				maskXs = np.append(maskXs,xs + (masterSquareSpace * x))
 
@@ -171,11 +171,10 @@ class chessboardImageHandler:
 			imVal = imArray[xCoord,yCoord]
 			blankImage[xCoord,yCoord] = imVal
 
-			colorCode = self.pixelValueToColorCode(imVal[:2])
+			colorCode = self.pixelValueToColorCode(imVal[:3])
 			vectorizedCoords.append(colorCode)
 
 		return blankImage,vectorizedCoords
-
 
 	def updateResizedImage(self):
 		newImg = Image.open(self.activeUrl).convert("RGBA")

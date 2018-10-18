@@ -1,52 +1,71 @@
 from bokeh.plotting import figure, show, output_file, curdoc
 import numpy as np
-from bokeh.models import TapTool
+from bokeh.models import TapTool, ColumnDataSource
 import bokeh.events as events
-from bokeh.layouts import row
+from bokeh.layouts import row, column
+from bokeh.models.widgets import RadioButtonGroup, Button
+from bokeh.models.glyphs import Rect
 
 class chessboardSquarePicker:
 
 	def __init__(self):
-		self.setupBoardVariables()
 
-		self.setupSquareWindow()
-		self.setupLedWindow()
+		self.setupBoardVariables()
+		self.setupMasterBoardWindow()
 		self.setupPalleteWindow()
+		self.setupControls()
 		self.setupGui()
 
+	def setupControls(self):
+		importFileButton = Button(label="Import file", button_type="success")
+
+		boardModeButtons = RadioButtonGroup(labels=self.boardModes, active=0,width=400,button_type="warning")
+		boardModeButtons.on_change("active",self.boardModeCallback)
+		self.controls = row(importFileButton,boardModeButtons)
+
 	def setupGui(self):
-		self.gui = row(self.squareWindow)#,self.colorPicker)
+		self.gui = column(
+			row(self.boardWindow,self.colorPicker),
+			self.controls
+			)
+
+	def boardModeCallback(self,attr,old,new):
+		self.boardMode = self.boardModes[new]
+		self.changeBoardMode(self.boardMode)
+
+	def changeBoardMode(self,boardMode):
+		if boardMode == "Square":
+			self.leds.visible = False
+			self.squares.visible = True
+
+		elif boardMode == "LED":
+			self.leds.visible = True
+			self.squares.visible = False
 
 	def setupBoardVariables(self):
-		self.boardMode = "square"
+		self.boardModes = ["Square","LED"]
+		self.boardMode = self.boardModes[0]
 
-		self.figureSize = 1200
+		self.figureSize = 880
 
 		self.numRows = 8
 		self.numCols = 8
 		self.ledSize = 1
 		self.ledSpacing = 1.15
-		self.squareSize = 1
-		self.ledColors = ["green"] * 1024
+		self.squareSize = self.ledSpacing*6
+		self.ledColors = ["green"] * 16 * self.numRows * self.numCols
 		self.squareColors = ["green"] * self.numRows * self.numCols
-	### LED Mode functions
-	def generateLedCoords(self,squareSpacing,rowNum,colNum):
-		masterSquareSpace = 6*squareSpacing
-		squareMatrix = np.array([
-			[0,1,1,1,1,0],
-			[1,0,0,0,0,1],
-			[1,0,0,0,0,1],
-			[1,0,0,0,0,1],
-			[1,0,0,0,0,1],
-			[0,1,1,1,1,0]
-			])
 
-		xs,ys = np.where(squareMatrix)
-		ys = (ys * squareSpacing) + (masterSquareSpace * colNum)
-		xs = (xs * squareSpacing) + (masterSquareSpace * rowNum)
-		return (xs,ys)
+	def setupMasterBoardWindow(self):
+		xRange = (-self.ledSize/2,6*self.ledSpacing*self.numCols - self.ledSize/2)
+		yRange = (-self.ledSize/2,6*self.ledSpacing*self.numRows - self.ledSize/2)
 
-	def setupLedWindow(self):
+		p = figure(plot_width=self.figureSize, plot_height=self.figureSize,
+			x_range = xRange,y_range = yRange,toolbar_location=None,
+			name = "board window",tools="")
+
+		p.grid.visible = False
+		p.axis.visible = False
 
 		ledXs = np.array([])
 		ledYs = np.array([])
@@ -57,12 +76,51 @@ class chessboardSquarePicker:
 				ledXs = np.append(ledXs,x)
 				ledYs = np.append(ledYs,y)
 
-		xRange = (-self.ledSize/2,6*self.ledSpacing*self.numCols - self.ledSize/2)
-		yRange = (-self.ledSize/2,6*self.ledSpacing*self.numRows - self.ledSize/2)
-
 		xTicks = np.linspace(xRange[0],xRange[1],self.numCols+1)
 		yTicks = np.linspace(yRange[0],yRange[1],self.numRows+1)
 
+		lineXs,lineYs = self.generateGridLineCoords(xTicks,yTicks)
+
+		p.multi_line(xs=lineXs, ys=lineYs, line_color="#8073ac", line_width=2)
+
+		squareSizeMod = .9
+		offset = 1 - squareSizeMod
+
+		squareCoords = self.generateSquareCoords(self.numRows)
+		squareXs = (squareCoords[:,0])
+		squareYs = (squareCoords[:,1])
+
+		# xRange = (offset,(self.squareSize * self.numRows) - offset)
+		# yRange = (offset,(self.squareSize * self.numCols) - offset)
+
+		self.leds = p.rect(x=ledXs, y=ledYs, 
+			width=self.ledSize, height=self.ledSize,
+			color=self.ledColors,angle=0, height_units="data",
+			fill_alpha=.5)
+
+		self.squares = p.rect(x=squareXs, y=squareYs, 
+			width=self.squareSize*squareSizeMod, height=self.squareSize*squareSizeMod, 
+			color=self.squareColors, angle=0, height_units="data",
+			fill_alpha=.5)
+
+		self.squares.nonselection_glyph = self.squares.selection_glyph
+		self.leds.nonselection_glyph = self.leds.selection_glyph
+
+		self.boardSelectTool= TapTool(renderers = [self.squares,self.leds])
+
+		# self.squares.visible = False
+		self.leds.visible = False
+
+		p.add_tools(self.boardSelectTool)
+		p.toolbar.active_tap = self.boardSelectTool
+
+		self.boardWindow = p
+
+		self.squares.data_source.on_change("selected",self.squareSelectCallback)
+		self.leds.data_source.on_change("selected",self.ledSelectCallback)
+
+	def generateGridLineCoords(self,xTicks,yTicks):
+		
 		boardWidth, boardHeight = xTicks[-1], yTicks[-1]
 
 		lineXs = []
@@ -82,27 +140,37 @@ class chessboardSquarePicker:
 			lineXs.append(xCoords)
 			lineYs.append(yCoords)
 
-		p = figure(plot_width=self.figureSize, plot_height=self.figureSize,
-			x_range = xRange,y_range = yRange)
+		return lineXs,lineYs
 
-		p.grid.visible = False
-		p.axis.visible = False
+	### LED Mode functions
+	def generateLedCoords(self,squareSpacing,rowNum,colNum):
+		masterSquareSpace = 6*squareSpacing
+		squareMatrix = np.array([
+			[0,1,1,1,1,0],
+			[1,0,0,0,0,1],
+			[1,0,0,0,0,1],
+			[1,0,0,0,0,1],
+			[1,0,0,0,0,1],
+			[0,1,1,1,1,0]
+			])
 
-		self.leds = p.rect(x=ledXs, y=ledYs, 
-			width=self.ledSize, height=self.ledSize,
-			color=self.ledColors,angle=0, height_units="data")
-
-		# self.ldes.data_source.on_change("selected",self.callback)
-
-		p.multi_line(xs=lineXs, ys=lineYs, line_color="#8073ac", line_width=2)
-
-		p.add_tools(TapTool(renderers = [self.squares]))
-
-		self.ledWindow = p
-
+		xs,ys = np.where(squareMatrix)
+		ys = (ys * squareSpacing) + (masterSquareSpace * colNum)
+		xs = (xs * squareSpacing) + (masterSquareSpace * rowNum)
+		return (xs,ys)
 
 	def bulkLedColorWrite(self,newColors):
 		self.leds.data_source.data["fill_color"] = newColors
+
+	def ledSelectCallback(self,attr,old,new):
+		selectedIndices = self.leds.data_source.selected.indices
+		if selectedIndices:
+			self.writeLedToColor(selectedIndices[-1],self.activeColor)
+
+	def writeLedToColor(self,ledIndex,color):
+		existingColors = self.leds.data_source.data["fill_color"]
+		existingColors[ledIndex] = color
+		self.leds.data_source.data["fill_color"] = existingColors
 
 	## Square mode functions
 	def generateSquareCoords(self,numSquares):
@@ -115,36 +183,9 @@ class chessboardSquarePicker:
 
 		return (np.array((squareCoords)))
 
-	def setupSquareWindow(self):
-		squareSizeMod = .9
-		offset = 1-squareSizeMod
-
-		squareCoords = self.generateSquareCoords(self.numRows)
-		xs = (squareCoords[:,0])
-		ys = (squareCoords[:,1])
-
-		xRange = (offset,(self.squareSize * self.numRows) - offset)
-		yRange = (offset,(self.squareSize * self.numCols) - offset)
-		p = figure(plot_width=self.figureSize, plot_height=self.figureSize,
-			x_range=xRange,y_range = yRange)
-
-		p.axis.visible = False
-		p.grid.visible = False
-
-		self.squares = p.rect(x=xs, y=ys, 
-			width=self.squareSize*squareSizeMod, height=self.squareSize*squareSizeMod, 
-			color=self.squareColors,
-		       angle=0, height_units="data")
-
-		self.squares.data_source.on_change("selected",self.squareSelectCallback)
-
-		p.add_tools(TapTool())
-
-		self.squareWindow = p
-
 	def squareSelectCallback(self,attr,old,new):
 		selectedIndex = self.squares.data_source.selected.indices[-1]
-		self.writeSquareToColor(selectedIndex,"red")
+		self.writeSquareToColor(selectedIndex,self.activeColor)
 
 	def writeSquareToColor(self,squareIndex,color):
 		existingColors = self.squares.data_source.data["fill_color"]
@@ -157,17 +198,22 @@ class chessboardSquarePicker:
 
 	def colorUpdate(self,r,g):
 		color = "#%02x%02x%02x" % (int(255*r), int(255*g), 150)
-		
-		outputRect = self.colorFig.select_one({'name': 'colorRect'})
-		outputRect.data_source.data = {"x":[.5],"y":[.5],"width":[1],"height":[1],"fill_color":[color]}
+		self.activeColor = color
+		self.outputColorSource.data["color"] =[color]
 
 	def mouseCallback(self,event):	
-		colorUpdate(event.x,event.y)
+		if self.colorChangeMode:
+			self.colorUpdate(event.x,event.y)
+
+	def mouseClickCallback(self,event):
+		self.colorChangeMode = 1 -  self.colorChangeMode
 
 	def setupPalleteWindow(self):
-
-		x = np.linspace(0,1,4)
-		y = np.linspace(0,1,4)
+		self.colorChangeMode = 0
+		self.colorPickerSquareSize = .1
+		self.activeColor = "red"
+		x = np.linspace(0,1,11)
+		y = np.linspace(0,1,11)
 
 		mesh = np.meshgrid(x,y)
 
@@ -176,28 +222,38 @@ class chessboardSquarePicker:
 
 		colors = ["#%02x%02x%02x" % (int(r), int(g), 150) for r, g in zip(255*xx, 256*yy)]
 
-		p = figure(x_range=(0,1),y_range=(0,1),width=200,height=self.figureSize,toolbar_location=None)
+		p = figure(x_range=(0,1),y_range=(0,1),width=200,height=self.figureSize-200,toolbar_location=None,tools="")
 		p.axis.visible = False
 		p.grid.visible = False
 
-		self.colorPickerSquareSize = .1
 		colorMap = p.rect(x=xx,y=yy,width=self.colorPickerSquareSize,height=self.colorPickerSquareSize, fill_color=colors,line_color=colors)#line_width=0,line_alpha=0.0)
 
-		# p.on_event(events.MouseMove,self.mouseCallback)
-		self.colorPicker = p
+		outputColorWindow = figure(x_range=(0,1),y_range=(0,1),width=200,height=200,toolbar_location=None,tools="")
+		outputColorWindow.axis.visible = False
+		outputColorWindow.grid.visible = False
+		self.outputColorSource = ColumnDataSource(data=dict(x=[.5],y=[.5],w=[1],h=[1],color=[self.activeColor]))
+
+		outputColorRect = outputColorWindow.rect(x="x",y="y",width = "w",height="h", fill_color="color",source=self.outputColorSource,name="output rect")#line_width=0,line_alpha=0.0)
+
+		p.on_event(events.MouseMove,self.mouseCallback)
+		p.on_event(events.Tap,self.mouseClickCallback)
+		self.colorPicker = column(outputColorWindow,p)
 
 	def showGui(self):
 		show(self.gui)
 		curdoc().add_root(self.gui)
 
-
 from imageHandler import chessboardImageHandler
 cI = chessboardImageHandler()
 
-cI.iconFileCallback(1,1,{"file_name":["josh.png"]})
+cI.iconFileCallback(1,1,{"file_name":["heart.png"]})
+
 newColors = (cI.updateResizedImage())
 
+# print (len(newColors))
 cSP = chessboardSquarePicker()
+# print (newColors)
+cSP.changeBoardMode("LED")
 cSP.bulkLedColorWrite(newColors)
 
 cSP.showGui()
