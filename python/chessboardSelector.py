@@ -3,8 +3,13 @@ import numpy as np
 from bokeh.models import TapTool, ColumnDataSource
 import bokeh.events as events
 from bokeh.layouts import row, column
-from bokeh.models.widgets import RadioButtonGroup, Button
+from bokeh.models.widgets import RadioButtonGroup, Button, Slider, TextInput
 from bokeh.models.glyphs import Rect
+
+from textHandler import textHandler
+texter = textHandler()
+
+from string import ascii_uppercase, ascii_lowercase
 
 class chessboardSquarePicker:
 
@@ -17,17 +22,44 @@ class chessboardSquarePicker:
 		self.setupGui()
 
 	def setupControls(self):
+		textInput = TextInput(value="",title = "Text to display")
+		textInput.on_change("value",self.textCallback)
+
+		brightnessSlider = Slider(start=0, end=1, value=.5, step=.05, title="Brightness")
+		brightnessSlider.on_change("value",self.brightnessCallback)
+
+		iconFileSource = ColumnDataSource({'file_contents':[], 'file_name':[]})
+		# iconFileSource.on_change('data', self.iconFileCallback)
 		importFileButton = Button(label="Import file", button_type="success")
+		# importFileButton.callback = self.fileButtonCallback(iconFileSource)
 
 		boardModeButtons = RadioButtonGroup(labels=self.boardModes, active=0,width=400,button_type="warning")
 		boardModeButtons.on_change("active",self.boardModeCallback)
-		self.controls = row(importFileButton,boardModeButtons)
+		self.controls = row(brightnessSlider,boardModeButtons,textInput)
 
 	def setupGui(self):
 		self.gui = column(
 			row(self.boardWindow,self.colorPicker),
 			self.controls
 			)
+	def textCallback(self,attr,old,new):
+		newChar = new[0]
+		indices = texter.charToBokehIndices(newChar)
+		cSP.bulkSquareColorWrite(["green"]*64)
+		# color = "blue"
+		for index in indices:
+			cSP.writeSquareToColor(index,self.activeColor)
+
+
+	def brightnessCallback(self,attr,old,new):
+		newBrightness = new
+		# print (dir(self.squares))
+		self.squares.glyph.fill_alpha = new
+		self.leds.glyph.fill_alpha = new
+
+		# self.leds.nonselection_glyph.fill_alpha = new
+		# self.squares.fill_alpha = new
+
 
 	def boardModeCallback(self,attr,old,new):
 		self.boardMode = self.boardModes[new]
@@ -43,7 +75,7 @@ class chessboardSquarePicker:
 			self.squares.visible = False
 
 	def setupBoardVariables(self):
-		self.boardModes = ["Square","LED"]
+		self.boardModes = ["Square","LED","Picture","Text"]
 		self.boardMode = self.boardModes[0]
 
 		self.figureSize = 880
@@ -118,6 +150,41 @@ class chessboardSquarePicker:
 
 		self.squares.data_source.on_change("selected",self.squareSelectCallback)
 		self.leds.data_source.on_change("selected",self.ledSelectCallback)
+
+
+	def fileButtonCallback(self,fileInfoSource):
+		return CustomJS(args=dict(file_source=fileInfoSource), code = """
+			function read_file(filename) {
+			    var reader = new FileReader();
+			    reader.onload = load_handler;
+			    reader.onerror = error_handler;
+			    // readAsDataURL represents the file's data as a base64 encoded string
+			    reader.readAsDataURL(filename);
+			}
+
+			function load_handler(event) {
+			    var b64string = event.target.result;
+			    file_source.data = {'file_contents' : [b64string], 'file_name':[input.files[0].name]};
+			    file_source.trigger("change");
+			}
+
+			function error_handler(evt) {
+			    if(evt.target.error.name == "NotReadableError") {
+			        alert("Can't read file!");
+			    }
+			}
+
+			var input = document.createElement('input');
+			input.setAttribute('type', 'file');
+			input.onchange = function(){
+			    if (window.FileReader) {
+			        read_file(input.files[0]);
+			    } else {
+			        alert('FileReader is not supported in this browser');
+			    }
+			}
+			input.click();
+			""")
 
 	def generateGridLineCoords(self,xTicks,yTicks):
 		
@@ -242,18 +309,32 @@ class chessboardSquarePicker:
 	def showGui(self):
 		show(self.gui)
 		curdoc().add_root(self.gui)
+		self.letterIndex = 0
+		self.upperLowerMode = 0
+		curdoc().add_periodic_callback(self.alphabetize,500)
 
-from imageHandler import chessboardImageHandler
-cI = chessboardImageHandler()
+	def alphabetize(self):
+		if self.letterIndex > 25:
+			self.letterIndex = 0
+			self.upperLowerMode = 1 - self.upperLowerMode
 
-cI.iconFileCallback(1,1,{"file_name":["heart.png"]})
+		if self.upperLowerMode:
+			activeLetter = ascii_lowercase[self.letterIndex]
+		else:
+			activeLetter = ascii_uppercase[self.letterIndex]
 
-newColors = (cI.updateResizedImage())
+		self.textCallback(0,0,activeLetter)
+		self.letterIndex += 1
+		
+# from imageHandler import chessboardImageHandler
+# cI = chessboardImageHandler()
 
-# print (len(newColors))
+# cI.iconFileCallback(1,1,{"file_name":["heart.png"]})
+# newColors = (cI.updateResizedImage())
+
 cSP = chessboardSquarePicker()
-# print (newColors)
-cSP.changeBoardMode("LED")
-cSP.bulkLedColorWrite(newColors)
-
+# cSP.changeBoardMode("LED")
+# cSP.bulkLedColorWrite(newColors)
+# cSP.brightnessCallback(0,0,0)
+# cSP.textCallback(0,0,"R")
 cSP.showGui()

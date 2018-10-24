@@ -21,7 +21,7 @@ class chessboardImageHandler:
 		self.maskModes = {(8,8):0,(32,32):4,(48,48):6}
 
 		self.pictureModes = ["8x8","32x32","48x48"]
-		self.pictureSizes = self.maskModes.keys()
+		self.pictureSizes = list(self.maskModes.keys())
 		
 		self.activeUrl = ""
 		self.resizeSize = (48,48)
@@ -68,7 +68,7 @@ class chessboardImageHandler:
 
 	def iconFileCallback(self,attr,old,new):
 		iconFilename =  new['file_name'][0]
-		self.activeUrl = os.path.join("static",iconFilename)
+		self.activeUrl = os.path.join("python","static",iconFilename)
 
 		self.updateOriginalImage()
 		self.updateResizedImage()
@@ -215,4 +215,3 @@ def testImageHandler():
 	cI.iconFileCallback(1,1,{"file_name":["heart.png"]})
 	cI.showGui()
 
-# testImageHandler()
