@@ -1,11 +1,8 @@
-from textBoardMapping import numbersDict, upperLettersDict,lowerLettersDict
+from textBoardMapping import masterDict
 
 class textHandler:
      def charToCoords(self,charIn):
-          if charIn == charIn.upper():
-               charIndices = upperLettersDict[charIn][:-1]
-          else:
-               charIndices = lowerLettersDict[charIn][:-1]
+          charIndices = masterDict[charIn][:-1]
           charCoords = [self.boardIndexToPosCoord(charIndex) for charIndex in charIndices]
           return charCoords
 
